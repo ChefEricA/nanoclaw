@@ -320,6 +320,39 @@ async function handleApprovalResponse(
     killContainer(session.id, 'mcp server added');
     notify(`MCP server "${payload.name}" added. Your container will restart with it on the next message.`);
     log.info('MCP server add approved', { approvalId: approval.approval_id, userId });
+  } else if (approval.action === 'set_provider_config') {
+    const agentGroup = getAgentGroup(session.agent_group_id);
+    if (!agentGroup) {
+      notify('set_provider_config approved but agent group missing.');
+      return;
+    }
+    const provider = payload.provider as string;
+    const config = payload.config as Record<string, unknown>;
+
+    updateContainerConfig(agentGroup.folder, (cfg) => {
+      const merged: Record<string, unknown> = { ...(cfg.providers[provider] ?? {}) };
+      for (const [key, value] of Object.entries(config)) {
+        // null/undefined clears the field — anything else is a set.
+        if (value === null || value === undefined) delete merged[key];
+        else merged[key] = value;
+      }
+      if (Object.keys(merged).length === 0) {
+        delete cfg.providers[provider];
+      } else {
+        cfg.providers[provider] = merged;
+      }
+    });
+
+    // Kill the container so the next wake picks up the new env from
+    // resolveProviderContribution.
+    killContainer(session.id, 'provider config updated');
+    notify(`Provider config for "${provider}" updated. Your container will restart with the new settings on the next message.`);
+    log.info('set_provider_config approved', {
+      approvalId: approval.approval_id,
+      userId,
+      provider,
+      fields: Object.keys(config),
+    });
   }
 
   deletePendingApproval(approval.approval_id);

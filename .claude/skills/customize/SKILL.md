@@ -54,6 +54,46 @@ Implementation:
 1. Add MCP server config to the container settings (see `src/container-runner.ts` for how MCP servers are mounted)
 2. Document available tools in `groups/CLAUDE.md`
 
+### Changing Provider or Model (per agent group)
+
+Each agent group picks its own provider (`claude` | `opencode` | `mock`) and its own model via `providers.<name>.model` in `groups/<folder>/container.json`. There are two paths depending on whether the operator is at the keyboard or wants the agent to change itself from chat.
+
+Questions to ask:
+- Which group? (look up by name or folder)
+- Switch provider, change model, or both?
+- New model id (provider-specific — e.g. `claude-sonnet-4-5`, `openrouter/anthropic/claude-sonnet-4`, `opencode/big-pickle`)
+
+**From Claude Code (operator editing files):**
+
+1. For provider switch: `sqlite3 data/v2.db "UPDATE agent_groups SET agent_provider = '<name>' WHERE folder = '<folder>'"`.
+2. For model: edit `groups/<folder>/container.json` and merge into `providers.<provider>`:
+   ```jsonc
+   { "providers": { "claude": { "model": "claude-sonnet-4-5" } } }
+   ```
+3. Bounce the session's container (kill it or wait for idle) so the next wake picks up the new env.
+
+**From chat (agent reconfigures itself):**
+
+Tell the agent (or let it propose it): "use the `set_provider_config` tool to switch my model to X." The tool writes a system action that triggers an approval card to an admin; after approval, the host writes `container.json` and kills the container so the next message spawns with the new env. For provider switching, the DB column still needs a direct edit (no self-mod tool for `agent_groups.agent_provider` yet).
+
+Shape of the per-group config (what the tool merges into):
+
+```jsonc
+// groups/<folder>/container.json
+{
+  "providers": {
+    "claude":   { "model": "claude-sonnet-4-5" },
+    "opencode": {
+      "innerProvider": "openrouter",
+      "model":         "openrouter/anthropic/claude-sonnet-4",
+      "smallModel":    "openrouter/anthropic/claude-haiku-4.5"
+    }
+  }
+}
+```
+
+Fallback chain: per-group config → host `.env` (`ANTHROPIC_MODEL` / `OPENCODE_*`) → provider default.
+
 ### Changing Assistant Behavior
 
 Questions to ask:

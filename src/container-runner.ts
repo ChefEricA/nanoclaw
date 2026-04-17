@@ -187,13 +187,15 @@ function resolveProviderContribution(
 ): { provider: string; contribution: ProviderContainerContribution } {
   const provider = (session.agent_provider || agentGroup.agent_provider || 'claude').toLowerCase();
   const fn = getProviderContainerConfig(provider);
-  const contribution = fn
-    ? fn({
-        sessionDir: sessionDir(agentGroup.id, session.id),
-        agentGroupId: agentGroup.id,
-        hostEnv: process.env,
-      })
-    : {};
+  if (!fn) return { provider, contribution: {} };
+
+  const containerConfig = readContainerConfig(agentGroup.folder);
+  const contribution = fn({
+    sessionDir: sessionDir(agentGroup.id, session.id),
+    agentGroupId: agentGroup.id,
+    hostEnv: process.env,
+    providerConfig: containerConfig.providers[provider],
+  });
   return { provider, contribution };
 }
 

@@ -16,14 +16,22 @@
  *     --platform-id discord:@me:1491573333382523708 \
  *     --display-name "Gavriel" \
  *     [--agent-name "Andy"] \
- *     [--welcome "System instruction: ..."]
+ *     [--welcome "System instruction: ..."] \
+ *     [--provider claude|opencode|mock] \
+ *     [--model <provider-specific-id>]
  *
  * For direct-addressable channels (telegram, whatsapp, etc.), --platform-id
  * is typically the same as the handle in --user-id, with the channel prefix.
+ *
+ * --provider sets `agent_groups.agent_provider`; --model seeds
+ * `providers.<provider>.model` in the per-group `container.json`. Both are
+ * only applied when creating a new group — pre-existing groups keep their
+ * provider/model settings.
  */
 import path from 'path';
 
 import { DATA_DIR } from '../src/config.js';
+import { updateContainerConfig } from '../src/container-config.js';
 import { createAgentGroup, getAgentGroupByFolder } from '../src/db/agent-groups.js';
 import { normalizeName } from '../src/db/agent-destinations.js';
 import { initDb } from '../src/db/connection.js';
@@ -47,6 +55,8 @@ interface Args {
   displayName: string;
   agentName: string;
   welcome: string;
+  provider: string | null;
+  model: string | null;
 }
 
 const DEFAULT_WELCOME =
@@ -82,6 +92,14 @@ function parseArgs(argv: string[]): Args {
         out.welcome = val;
         i++;
         break;
+      case '--provider':
+        out.provider = (val ?? '').toLowerCase() || null;
+        i++;
+        break;
+      case '--model':
+        out.model = val || null;
+        i++;
+        break;
     }
   }
 
@@ -100,6 +118,8 @@ function parseArgs(argv: string[]): Args {
     displayName: out.displayName!,
     agentName: out.agentName?.trim() || out.displayName!,
     welcome: out.welcome?.trim() || DEFAULT_WELCOME,
+    provider: out.provider ?? null,
+    model: out.model ?? null,
   };
 }
 
@@ -146,19 +166,21 @@ async function main(): Promise<void> {
 
   // 2. Agent group + filesystem
   const folder = `dm-with-${normalizeName(args.displayName)}`;
-  let ag: AgentGroup | undefined = getAgentGroupByFolder(folder);
-  if (!ag) {
+  const existingAg = getAgentGroupByFolder(folder);
+  let ag: AgentGroup;
+  if (!existingAg) {
     const agId = generateId('ag');
     createAgentGroup({
       id: agId,
       name: args.agentName,
       folder,
-      agent_provider: null,
+      agent_provider: args.provider,
       created_at: now,
     });
     ag = getAgentGroupByFolder(folder)!;
-    console.log(`Created agent group: ${ag.id} (${folder})`);
+    console.log(`Created agent group: ${ag.id} (${folder})${args.provider ? ` [provider: ${args.provider}]` : ''}`);
   } else {
+    ag = existingAg;
     console.log(`Reusing agent group: ${ag.id} (${folder})`);
   }
   initGroupFilesystem(ag, {
@@ -167,6 +189,17 @@ async function main(): Promise<void> {
       `You are ${args.agentName}, a personal NanoClaw agent for ${args.displayName}. ` +
       'When you receive a system welcome prompt, introduce yourself briefly and invite them to chat. Keep replies concise.',
   });
+
+  // 2b. Seed per-group provider config if a model was specified. Only applied
+  // on fresh group creation so re-running the script doesn't clobber whatever
+  // the operator has since tuned in container.json.
+  if (!existingAg && args.model) {
+    const provider = (args.provider ?? 'claude').toLowerCase();
+    updateContainerConfig(ag.folder, (cfg) => {
+      cfg.providers[provider] = { ...(cfg.providers[provider] ?? {}), model: args.model };
+    });
+    console.log(`Seeded providers.${provider}.model = ${args.model}`);
+  }
 
   // 3. DM messaging group
   const platformId = namespacedPlatformId(args.channel, args.platformId);

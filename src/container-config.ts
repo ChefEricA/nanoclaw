@@ -9,7 +9,15 @@
  *     packages:        { apt: string[], npm: string[] }
  *     imageTag?:       string                    // set by buildAgentGroupImage on rebuild
  *     additionalMounts?: Array<{hostPath, containerPath, readonly}>
+ *     providers?:      { [providerName]: { ... } }
  *   }
+ *
+ * `providers.<name>` is the per-group configuration for a specific agent
+ * provider (model, base URL, inner provider id, etc.). Each provider's
+ * host-side registration (`src/providers/<name>.ts`) reads its own block
+ * via `ctx.providerConfig`. Fields within the block are provider-specific
+ * and loosely typed (`Record<string, unknown>`) — providers validate their
+ * own shape at read time.
  *
  * All fields are optional — a missing file or a partial file both resolve
  * to sensible defaults. Writes are atomic-enough (write-then-rename is not
@@ -38,6 +46,8 @@ export interface ContainerConfig {
   packages: { apt: string[]; npm: string[] };
   imageTag?: string;
   additionalMounts: AdditionalMountConfig[];
+  /** Per-provider configuration blocks (model, base URL, etc.), keyed by provider name. */
+  providers: Record<string, Record<string, unknown>>;
 }
 
 function emptyConfig(): ContainerConfig {
@@ -45,6 +55,7 @@ function emptyConfig(): ContainerConfig {
     mcpServers: {},
     packages: { apt: [], npm: [] },
     additionalMounts: [],
+    providers: {},
   };
 }
 
@@ -71,6 +82,7 @@ export function readContainerConfig(folder: string): ContainerConfig {
       },
       imageTag: raw.imageTag,
       additionalMounts: raw.additionalMounts ?? [],
+      providers: raw.providers ?? {},
     };
   } catch (err) {
     console.error(`[container-config] failed to parse ${p}: ${String(err)}`);

@@ -119,7 +119,7 @@ const APPROVAL_OPTIONS: RawOption[] = [
 async function requestApproval(
   session: Session,
   agentName: string,
-  action: 'install_packages' | 'request_rebuild' | 'add_mcp_server',
+  action: 'install_packages' | 'request_rebuild' | 'add_mcp_server' | 'set_provider_config',
   payload: Record<string, unknown>,
   title: string,
   question: string,
@@ -861,6 +861,37 @@ async function handleSystemAction(
         { reason },
         'Rebuild Request',
         `Agent "${agentGroup.name}" is attempting to rebuild container.${reason ? `\nReason: ${reason}` : ''}`,
+      );
+      break;
+    }
+
+    case 'set_provider_config': {
+      const agentGroup = getAgentGroup(session.agent_group_id);
+      if (!agentGroup) {
+        notifyAgent(session, 'set_provider_config failed: agent group not found.');
+        break;
+      }
+      const provider = (content.provider as string | undefined)?.toLowerCase();
+      const config = content.config as Record<string, unknown> | undefined;
+      const reason = (content.reason as string) || '';
+      if (!provider) {
+        notifyAgent(session, 'set_provider_config failed: provider is required.');
+        break;
+      }
+      if (!config || typeof config !== 'object') {
+        notifyAgent(session, 'set_provider_config failed: config must be an object.');
+        break;
+      }
+      const summary = Object.entries(config)
+        .map(([k, v]) => `${k}=${v === null ? '(clear)' : JSON.stringify(v)}`)
+        .join(', ');
+      await requestApproval(
+        session,
+        agentGroup.name,
+        'set_provider_config',
+        { provider, config, reason },
+        'Set Provider Config',
+        `Agent "${agentGroup.name}" wants to update ${provider} config:\n${summary}${reason ? `\nReason: ${reason}` : ''}`,
       );
       break;
     }

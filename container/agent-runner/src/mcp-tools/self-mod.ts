@@ -140,4 +140,49 @@ export const requestRebuild: McpToolDefinition = {
   },
 };
 
-export const selfModTools: McpToolDefinition[] = [installPackages, addMcpServer, requestRebuild];
+export const setProviderConfig: McpToolDefinition = {
+  tool: {
+    name: 'set_provider_config',
+    description:
+      'Update YOUR agent group\'s provider config (model, inner provider, base URL, etc.) under `providers.<provider>` in `container.json`. Merges with existing fields; pass `null` for a field to clear it. Requires admin approval; fire-and-forget. The container restarts after approval so the new config takes effect on the next message.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        provider: {
+          type: 'string',
+          description: 'Provider name — must match a registered provider (e.g. "claude", "opencode").',
+        },
+        config: {
+          type: 'object',
+          description:
+            'Fields to merge into `providers.<provider>`. For claude: `{ model: "claude-sonnet-4-5" }`. For opencode: `{ innerProvider, model, smallModel }`. Pass `null` for a field to clear it.',
+        },
+        reason: { type: 'string', description: 'Why this change is needed' },
+      },
+      required: ['provider', 'config'],
+    },
+  },
+  async handler(args) {
+    const provider = (args.provider as string | undefined)?.toLowerCase();
+    const config = args.config as Record<string, unknown> | undefined;
+    if (!provider) return err('provider is required');
+    if (!config || typeof config !== 'object') return err('config must be an object');
+
+    const requestId = generateId();
+    writeMessageOut({
+      id: requestId,
+      kind: 'system',
+      content: JSON.stringify({
+        action: 'set_provider_config',
+        provider,
+        config,
+        reason: (args.reason as string) || '',
+      }),
+    });
+
+    log(`set_provider_config: ${requestId} → ${provider} ${JSON.stringify(config)}`);
+    return ok(`Provider config change submitted. You will be notified when admin approves or rejects.`);
+  },
+};
+
+export const selfModTools: McpToolDefinition[] = [installPackages, addMcpServer, requestRebuild, setProviderConfig];

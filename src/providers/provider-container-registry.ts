@@ -29,6 +29,13 @@ export interface ProviderContainerContext {
   agentGroupId: string;
   /** `process.env` at spawn time — pull passthrough values from here. */
   hostEnv: NodeJS.ProcessEnv;
+  /**
+   * Per-group config block for this provider, read from
+   * `groups/<folder>/container.json` under `providers.<name>`. Shape is
+   * provider-specific; providers should treat individual fields as optional
+   * and fall back to `hostEnv` or sensible defaults.
+   */
+  providerConfig?: Record<string, unknown>;
 }
 
 export interface ProviderContainerContribution {

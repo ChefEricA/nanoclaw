@@ -31,6 +31,14 @@ Then ask in plain text (NOT `AskUserQuestion` — these are free-form):
 2. **Your display name** — human name, used to name the agent group (`dm-with-<normalized>`) and as the welcome-message addressee. Record as `DISPLAY_NAME`.
 3. **Agent persona name** — the assistant's display name. Default: `DISPLAY_NAME`. Record as `AGENT_NAME`.
 
+Then use `AskUserQuestion` for the agent backend:
+
+4. **Provider** — "Which agent provider should this agent use?" with options `claude` (default, Anthropic Agent SDK) and `opencode` (OpenRouter / Anthropic / etc. via OpenCode — assumes `/add-opencode` has been run). Record as `PROVIDER`.
+
+Then ask in plain text (free-form — model ids are provider-specific strings):
+
+5. **Model** — "Which model id? (Leave blank for the provider default.)" For claude: values like `claude-sonnet-4-5`, `claude-opus-4-5`. For opencode: values like `openrouter/anthropic/claude-sonnet-4`, `opencode/big-pickle`. Record as `MODEL` (may be empty).
+
 ## 3. Resolve the DM platform id
 
 This depends on whether the channel supports cold DM via `adapter.openDM`.
@@ -77,10 +85,12 @@ npx tsx scripts/init-first-agent.ts \
   --user-id "${CHANNEL}:${USER_HANDLE}" \
   --platform-id "${PLATFORM_ID}" \
   --display-name "${DISPLAY_NAME}" \
-  --agent-name "${AGENT_NAME}"
+  --agent-name "${AGENT_NAME}" \
+  --provider "${PROVIDER}" \
+  ${MODEL:+--model "${MODEL}"}
 ```
 
-Add `--welcome "System instruction: ..."` to override the default welcome prompt.
+Pass `--provider` even when the user picked the default `claude`, so the DB column is set explicitly rather than left null. Omit `--model` entirely if the user left it blank — the provider will fall back to the host env / SDK default. Add `--welcome "System instruction: ..."` to override the default welcome prompt.
 
 The script:
 1. Upserts the `users` row and grants `owner` role if no owner exists.
